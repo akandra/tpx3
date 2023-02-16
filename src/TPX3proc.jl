@@ -1,3 +1,8 @@
+# tpx3 file naming convention:
+# 
+#   [file number]_[metal]_[facet]_[beam species]_[beam RR]_[laser RR]_[laser position]_[temperature]_[comment]_xxxxxx.tpx3
+#
+using Gtk
 using Parameters
 
 include("function_convert_and_process.jl")
@@ -8,14 +13,17 @@ version = "0.1.9"
 
 parameters = pars()
 
-parameters.data_path      = "../Data/20221010" # select the data file to process
-data_filenames            = readdir(parameters.data_path)
-TPX3_fnames               = filter(x-> occursin("tpx3",x) ,data_filenames)
-
-fn_n = 6
-
-filename                  = split(TPX3_fnames[fn_n], '.')[1]
+parameters.data_path      = "/home/akandra/Dropbox/Timepix camera data analysis/Data" # select the data file to process
+filename                  = "20221010/004_100kHz_Ptlowerfacet_thickNOat20Hz_480C000000"
 parameters.filename_stem  = parameters.data_path * "/" * filename
+
+#filename = nothing
+
+if isnothing(filename)
+    filename = open_dialog("Select a TPX3 file")
+    parameters.filename_stem  = split(filename, ".TPX3")[1]
+end
+println(filename)
 
 parameters.write_bin      = false
 parameters.write_txt      = false
@@ -48,7 +56,7 @@ parameters.kt_nbins = Int(floor(parameters.kt_max/parameters.kt_bin))
 parameters.kt_gate_min = 0e-6
 parameters.kt_gate_max = 100000e-6
 parameters.kt_t0 = 5.0
-parameters.kt_length = 110.0
+parameters.kt_length = 20.0
 
 # Laser and nozzle frequencies (Hz)
 parameters.freq_nozzle = 20.
@@ -61,8 +69,9 @@ println("selected file\t\t: ", filename)
 convert_and_process(parameters)
 
 #NEXTTIME
-# 1. time-dependent kinetics - finish the normalization and the legend
+# 0.5 time-dependent kinetics - finish the file name annotation and position of the legend
 # 1. deal with border case fo get_chunk when there is no leftover
+# 3. use a profiler to improve the performance
 # 2. Multimass KT
 # 3. Introduce the workflow keys: 
 #        1: calibration of tof from background;

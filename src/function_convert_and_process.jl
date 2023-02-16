@@ -395,10 +395,11 @@ function convert_and_process(p :: pars)
         
         endvals   = cumsum(kt_norm) .+ parameters.kt_t0
         startvals = endvals .- kt_norm
+        legend    = [string(round(startvals[i],digits=1))*" - "*string(round(endvals[i],digits=1))*" s" for i in 1:size(startvals)[1]]
 
         display(plot(t , kt_hist_BGcorr ./ kt_norm,
             xlabel="reaction time (ms)",ylabel="counts / bin / s",
-#            labels = reshape(legend, 1, size(legend)[1]),
+            labels = reshape(legend, 1, size(legend)[1]),
             framestyle = :box,
             title = "Kinetic traces",
             ann=( (0.99,0.95), text(p.filename_stem,:right,8))
