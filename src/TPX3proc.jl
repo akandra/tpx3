@@ -71,4 +71,3 @@ convert_and_process(parameters)
 
 # Long-term perspective:
 # 1. julia package
-# 2. git
