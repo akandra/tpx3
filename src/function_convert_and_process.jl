@@ -20,21 +20,34 @@ function process_chunk!(BGhist_array, tof_hist_sig, tof_hist_bkg, images, kt_his
     
     
     println("\t beam times in this chunk: ", out1[1], " - ", out1[n_out], " seconds")
-    
+ 
+    time_image = Millisecond(0)
     if p.create_image
+        time_image = now()
         analyze_image!(images, p, out1, out2, out3, out4, out5, out6, n_out)
+        time_image = now() - time_image
     end 
     
+    time_BG = Millisecond(0)
+    time_mode3 = Millisecond(0)
     if p.mode == 3
+        time_BG = now()
         BG_histogram!(BGhist_array, p, out1, out2, out3, out4, out5, out6, n_out, ROI_sig, ROI_bkg)
+        time_BG = now() - time_BG
+        time_mode3 = now()
         analysis_mode3!(tof_hist_sig, kt_hist_sig, kt_firstsec_sig, p, ROI_sig, out1, out2, out3, out4, out5, out6, n_out)
         analysis_mode3!(tof_hist_bkg, kt_hist_bkg, kt_firstsec_bkg, p, ROI_bkg, out1, out2, out3, out4, out5, out6, n_out)
+        time_mode3 = now() - time_mode3
     end
 
+    time_write = now()
     write_chunk(n_out, outfile_txt, 
                         ofb1, ofb2, ofb3, ofb4, ofb5, ofb6,
                         out1, out2, out3, out4, out5, out6; 
                         write_txt=p.write_txt, write_bin = p.write_bin)
+    time_write = now() - time_write
+    
+    return [time_image, time_BG, time_mode3, time_write]
 end
 
 
@@ -165,7 +178,10 @@ function convert_and_process(p :: pars)
     # loop over all the data processing one 64 bit packet word at a time 
     #       input data is handled in chunks by the getword function
     #       output data is written when an input chunk is exhausted
+    t0 = now()
     get_chunk(infile, input_data)
+    t_getchunk = now() - t0 
+    t_process = [Millisecond(0) for i in 1:4]
     while i < max_packet
         i = i + 1
 
@@ -178,14 +194,16 @@ function convert_and_process(p :: pars)
         # save and process data if we have finished processing a chunk
         if input_data.next > input_data.chunk
             
-            process_chunk!(BGhist_array, tof_hist_sig, tof_hist_bkg, images, kt_hist_sig, kt_hist_bkg,
+            t_process += process_chunk!(BGhist_array, tof_hist_sig, tof_hist_bkg, images, kt_hist_sig, kt_hist_bkg,
                         kt_firstsec_sig, kt_firstsec_bkg, p, ROI_sig, ROI_bkg, 
                         out1, out2, out3, out4, out5, out6, n_out,
                         outfile_txt, ofb1, ofb2, ofb3, ofb4, ofb5, ofb6)
             n_out = 0
 
             # get a new chunk
+            t0 = now()
             get_chunk(infile, input_data)
+            t_getchunk += now() - t0 
             ###--------------------------------------------------------------------------
             ##
             #   TODO  figure out if we need an empty chunk test
@@ -277,7 +295,7 @@ function convert_and_process(p :: pars)
     # save and process data left in chunk after reaching end of data
 
     if n_out > 0
-        process_chunk!(BGhist_array, tof_hist_sig, tof_hist_bkg, images, kt_hist_sig, kt_hist_bkg,
+        t_process += process_chunk!(BGhist_array, tof_hist_sig, tof_hist_bkg, images, kt_hist_sig, kt_hist_bkg,
                         kt_firstsec_sig, kt_firstsec_bkg, p, ROI_sig, ROI_bkg, 
                         out1, out2, out3, out4, out5, out6, n_out,
                         outfile_txt, ofb1, ofb2, ofb3, ofb4, ofb5, ofb6)
@@ -286,6 +304,12 @@ function convert_and_process(p :: pars)
     println()
     println("done converting data\n")
     println("------------------------------------------------------------------------------------------")
+    println(" Getting chunk time\t\t: ", t_getchunk)
+    println(" Image analysing time\t\t: ", t_process[1])
+    println(" BG histogram building time\t: ", t_process[2])
+    println(" Mode3 processing time\t\t: ", t_process[3])
+    println(" Writing out time\t\t: ", t_process[4])
+    println(" Chunk processing time\t\t: ", sum(t_process))
     println("Processing time\t\t\t: ", now() - timer)
     println("Total exp. time\t\t\t: ", out1[n_out], " seconds")
     println("------------------------------------------------------------------------------------------")

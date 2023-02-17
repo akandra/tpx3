@@ -41,7 +41,7 @@ parameters.first_seconds  = 3.0
 # TOF parameters
 parameters.tof_max        = 8e-6
 parameters.tof_bin        = 10e-9
-parameters.tof_gates      = [5.63, 5.90] .* 1e-6
+parameters.tof_gates      = [ 5.63, 5.90, 5.95, 6.0 ] .* 1e-6
 
 
 # image parameters 
@@ -59,7 +59,7 @@ parameters.kt_max         = 2e-3
 parameters.kt_bin         = 20e-6
 parameters.kt_nbins       = Int(floor(parameters.kt_max/parameters.kt_bin))
 parameters.kt_t0          = 5.0
-parameters.kt_length      = 30.0
+parameters.kt_length      = 10.0
 
 # Laser and nozzle frequencies (Hz)
 parameters.freq_nozzle    = 20.
@@ -72,14 +72,9 @@ println("selected file: ", filename)
 convert_and_process(parameters)
 
 #NEXTTIME
-# 0.5 time-dependent kinetics - finish the file name annotation and position of the legend
-# 1. deal with border case fo get_chunk when there is no leftover
-# 2. use a profiler to improve the performance
-# 3. Multimass KT
-# 4. Introduce the workflow keys: 
-#        1: calibration of tof from background;
-#        2: getting incident beam profile and select mass
-#        3: getting kinetic traces
-
+# 1. use a profiler to improve the performance
+# 2. deal with border case fo get_chunk when there is no leftover
+# 3. Introduce more modes
+#       a) imitate on-the-fly processing of the data
 # Long-term perspective:
 # 1. julia package
