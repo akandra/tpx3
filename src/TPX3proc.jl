@@ -14,11 +14,12 @@ parameters = pars()
 
 # PATH 1
 parameters.data_path      = "F://B2Data//09.02.2023"
+filename                  = "004_RealTimeTitrations_Ptlower_480C_50HzNH3_saturationO2_10minDosingAt100Hz_000000"
 
 # PATH 2
-#parameters.data_path      = "/home/akandra/Dropbox/Timepix camera data analysis/Data"
+parameters.data_path      = "/home/akandra/Dropbox/Timepix camera data analysis/Data"
+filename                  = "20221010/004_100kHz_Ptlowerfacet_thickNOat20Hz_480C000000"
 
-filename                  = "004_RealTimeTitrations_Ptlower_480C_50HzNH3_saturationO2_10minDosingAt100Hz_000000"
 parameters.filename_stem  = parameters.data_path * "/" * filename
 
 #filename = nothing
