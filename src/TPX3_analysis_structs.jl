@@ -20,14 +20,13 @@ end
     
     mode            :: Int16 = 0
 
-    create_tof      :: Bool = false
     tof_max         :: Float64 = 0.0
     tof_bin         :: Float64 = 0.0
-    tof_gate_min    :: Float64 = 0.0
-    tof_gate_max    :: Float64 = Inf
     
-    create_image    :: Bool  = false
-    image_scale     :: Tuple{Float64,Float64} = (-Inf,Inf)
+    tof_gates       :: Vector{Float64} = []
+    first_seconds   :: Float64 = 3.0
+    
+    create_image    :: Bool  = false   
     image_x_laser   :: Int16 = 0
     image_y_laser   :: Int16 = 0
     image_x_offset  :: Int16 = 0
@@ -35,7 +34,6 @@ end
     image_x_width   :: Int16 = 0
     image_y_width   :: Int16 = 0
 
-    create_kt       :: Bool = false
     kt_max          :: Float64 = 0.0
     kt_bin          :: Float64 = 0.0
     kt_nbins        :: Int = 0

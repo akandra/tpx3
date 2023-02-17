@@ -10,8 +10,6 @@ function BG_histogram!(BGhist_array::Vector{Int32},
                      ROI_sig::Matrix{Int16},
                      ROI_bkg::Matrix{Int16})
 
-    tmax_for_hist = 3 # seconds
-
     if isnothing(ROI_sig) || isnothing(ROI_bkg)
 
         println("background histogram not constructed: no ROI defined")
@@ -23,7 +21,7 @@ function BG_histogram!(BGhist_array::Vector{Int32},
         idx_roi = get_ROIdata(out1, out2, out3, out4, out5, out6, n_out, ROI_for_hist)
         
         for i in idx_roi
-            if out1[i] < tmax_for_hist
+            if out1[i] < p.first_seconds
                 
                 BGhist_array[Int(out5[i])] += 1
                 

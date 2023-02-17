@@ -8,37 +8,28 @@ include("TPX3_analysis_structs.jl")
 include("TPX3_packet_decode_functions.jl")
 include("chunk_functions.jl")
 include("function_rollover_correct!.jl")
-include("function_analyze_kt!.jl") 
 include("function_get_ROIdata.jl")
-include("function_analyze_TOF!.jl")
+include("function_analysis_mode3!.jl")
+include("function_BG_histogram!.jl")
 include("function_analyze_image!.jl")
-include("function_BG_histogram!.jl") ## FN ADDITIONS
 
-function process_chunk!(BGhist_array, tof_hist_sig, tof_hist_bkg, image, kt_hist, kt_hist_bkg,
-                        p, ROI_sig, ROI_bkg, 
+function process_chunk!(BGhist_array, tof_hist_sig, tof_hist_bkg, images, kt_hist_sig, kt_hist_bkg,
+                        kt_firstsec_sig, kt_firstsec_bkg, p, ROI_sig, ROI_bkg, 
                         out1, out2, out3, out4, out5, out6, n_out,
                         outfile_txt, ofb1, ofb2, ofb3, ofb4, ofb5, ofb6)
     
     
     println("\t beam times in this chunk: ", out1[1], " - ", out1[n_out], " seconds")
     
-    if p.mode == 3 ## FN ADDITIONS
-        BG_histogram!(BGhist_array, p, out1, out2, out3, out4, out5, out6, n_out, ROI_sig, ROI_bkg)
-    end
-
-    if p.create_tof
-        analyze_TOF!(tof_hist_sig, p, out1, out2, out3, out4, out5, out6, n_out, ROI_sig)
-        analyze_TOF!(tof_hist_bkg, p, out1, out2, out3, out4, out5, out6, n_out, ROI_bkg)
-    end 
-
     if p.create_image
-        analyze_image!(image, p, out1, out2, out3, out4, out5, out6, n_out)
+        analyze_image!(images, p, out1, out2, out3, out4, out5, out6, n_out)
     end 
     
-    if p.create_kt
-        analyze_kt!(kt_hist,     p, out1, out2, out3, out4, out5, out6, n_out, ROI_sig)
-        analyze_kt!(kt_hist_bkg, p, out1, out2, out3, out4, out5, out6, n_out, ROI_bkg)
-    end 
+    if p.mode == 3
+        BG_histogram!(BGhist_array, p, out1, out2, out3, out4, out5, out6, n_out, ROI_sig, ROI_bkg)
+        analysis_mode3!(tof_hist_sig, kt_hist_sig, kt_firstsec_sig, p, ROI_sig, out1, out2, out3, out4, out5, out6, n_out)
+        analysis_mode3!(tof_hist_bkg, kt_hist_bkg, kt_firstsec_bkg, p, ROI_bkg, out1, out2, out3, out4, out5, out6, n_out)
+    end
 
     write_chunk(n_out, outfile_txt, 
                         ofb1, ofb2, ofb3, ofb4, ofb5, ofb6,
@@ -116,45 +107,47 @@ function convert_and_process(p :: pars)
     ROI_bkg = [ [laser_pos[1] - offset[1] - width[1] laser_pos[1] - offset[1] ]; 
                 [laser_pos[2] + offset[2] - width[2] laser_pos[2] + offset[2] + width[2] ]]
 
-    BGhist_array = zeros(Int32, 256) ## FN ADDITIONS
     
-    # set TOFmax, TOFbin, and allocate tof histogram array
-    TOFbins = Int(floor(p.tof_max/p.tof_bin))
-    tof_hist_sig = zeros(Int32, TOFbins)
-    tof_hist_bkg = zeros(Int32, TOFbins)
+    ##################   INITIALIZE ARRAYS   ##################
+    
+    BGhist_array    = zeros(Int32, 256)
 
-    kt_hist     = Vector{Int32}[]
-    kt_hist_bkg = Vector{Int32}[]
-    push!(kt_hist,     zeros(Int32, p.kt_nbins))
-    push!(kt_hist_bkg, zeros(Int32, p.kt_nbins))
+    TOFbins         = Int(floor(p.tof_max/p.tof_bin))
+    tof_hist_sig    = zeros(Int32, TOFbins)
+    tof_hist_bkg    = zeros(Int32, TOFbins)
 
-    image   = zeros(Int32, 256, 256)
-    kt_image= zeros(Int32, 256, 256)
-    kt_tof_hist= zeros(Int32, TOFbins)
+    kt_hist_sig     = [Vector{Int32}[]]
+    kt_hist_bkg     = [Vector{Int32}[]]
 
+    kt_firstsec_sig = Vector{Int32}[]
+    kt_firstsec_bkg = Vector{Int32}[]
+
+    images          = []
+
+    for i1 in 1:Int(size(parameters.tof_gates)[1]/2)
+        push!(kt_hist_sig,      Vector{Int32}[])
+        push!(kt_hist_sig[i1],  zeros(Int32, parameters.kt_nbins))
+
+        push!(kt_hist_bkg,      Vector{Int32}[])
+        push!(kt_hist_bkg[i1],  zeros(Int32, parameters.kt_nbins))
+
+        push!(kt_firstsec_sig,  zeros(Int32, parameters.kt_nbins))
+        push!(kt_firstsec_bkg,  zeros(Int32, parameters.kt_nbins)) 
+
+        push!(images,           zeros(Int32, 256, 256))
+    end
+    # Now delete the last item out of the kinetic traces (which will be in intervals of xxx seconds),
+    # since this elements will not be needed
+    pop!(kt_hist_sig)
+    pop!(kt_hist_bkg)
+    ############################################################
+    
     #--------------------------------------------------------------------------
     # Process data
     #--------------------------------------------------------------------------
     n_out::Int    = 0              # counter for output records
     tdc1::Float64 = 0 
     tdc2::Float64 = 0
-    
-# -----------------------------------------------------------------------------
-#   Format of time TPX3 file:
-#       Header (8 bytes) specifying size of record in bytes, chip number, mode)
-#           Packet 1 (8 bytes)
-#           Packet 2 (8 bytes)
-#              ...
-#           Packet n (8 bytes)
-#       Header (8 bytes)
-#           ...
-#
-#  Packets are of three types
-#    0x4 Global time stamps, rollover time = ~ 81 days 
-#    0x6 TDC data packet ,   rollover time = 107.3741824 s
-#    0xB Pixel hit packet,   rollover time =  26.8435456 s
-#    packet type is encoded in bits 60..63 of the packet (0 based bit indexing)
-# -----------------------------------------------------------------------------
 
     println("------------------------------------------------------------------------------------------")
     println("Start processing file")
@@ -185,9 +178,10 @@ function convert_and_process(p :: pars)
         # save and process data if we have finished processing a chunk
         if input_data.next > input_data.chunk
             
-            process_chunk!(BGhist_array, tof_hist_sig, tof_hist_bkg, image, kt_hist, kt_hist_bkg,
-                           p, ROI_sig, ROI_bkg, out1, out2, out3, out4, out5, out6, n_out, 
-                           outfile_txt, ofb1, ofb2, ofb3, ofb4, ofb5, ofb6)
+            process_chunk!(BGhist_array, tof_hist_sig, tof_hist_bkg, images, kt_hist_sig, kt_hist_bkg,
+                        kt_firstsec_sig, kt_firstsec_bkg, p, ROI_sig, ROI_bkg, 
+                        out1, out2, out3, out4, out5, out6, n_out,
+                        outfile_txt, ofb1, ofb2, ofb3, ofb4, ofb5, ofb6)
             n_out = 0
 
             # get a new chunk
@@ -243,19 +237,7 @@ function convert_and_process(p :: pars)
                 TOA, TOT, x, y = process_pixel_hit_packet(packet)
                 TOA0 = TOA
                 TOA, TOA_prior, TOA_add = rollover_correct!(TOA, TOA_prior, TOA_ro, TOA_add)
-                # if TOA != TOA0
-                #     println("correction made", TOA - TOA0)
-                # end
 
-                # save for output -- individual times
-                # n_out += 1             
-                # out1[n_out] = tdc1   # laser trigger
-                # out2[n_out] = tdc2   # beam trigger
-                # out3[n_out] = TOA    # pixel time tdc1   # laser - detection = TOF
-                # out4[n_out] = TOT    # time over threshold (ns)
-                # out5[n_out] = x      # pixel x
-                # out6[n_out] = y      # pixel y
-                
                 # save for output -- differences                   
                 n_out += 1             
                 out1[n_out] = tdc2          # beam time
@@ -295,9 +277,10 @@ function convert_and_process(p :: pars)
     # save and process data left in chunk after reaching end of data
 
     if n_out > 0
-        process_chunk!(BGhist_array, tof_hist_sig, tof_hist_bkg, image, kt_hist, kt_hist_bkg,
-                       p, ROI_sig, ROI_bkg, out1, out2, out3, out4, out5, out6, n_out, 
-                       outfile_txt, ofb1, ofb2, ofb3, ofb4, ofb5, ofb6)
+        process_chunk!(BGhist_array, tof_hist_sig, tof_hist_bkg, images, kt_hist_sig, kt_hist_bkg,
+                        kt_firstsec_sig, kt_firstsec_bkg, p, ROI_sig, ROI_bkg, 
+                        out1, out2, out3, out4, out5, out6, n_out,
+                        outfile_txt, ofb1, ofb2, ofb3, ofb4, ofb5, ofb6)
     end
                 
     println()
@@ -323,8 +306,13 @@ function convert_and_process(p :: pars)
         close(ofb6)
     end
 
+                
+    # --------------------------------------------------------------------- #
+    # -------------------------  PLOTTING SECTION ------------------------- #
+                
     if p.mode == 3
-        println("\n Plotting Background Histogram for the first seconds")  ## FN ADDITIONS
+                    
+        ###########   PLOTTING BACKGROUND FOR FIRST SECONDS   ##########
         vlines = [p.image_x_laser - p.image_x_offset - p.image_x_width,
                     p.image_x_laser - p.image_x_offset,
                     p.image_x_laser,
@@ -332,78 +320,73 @@ function convert_and_process(p :: pars)
                     p.image_x_laser + p.image_x_offset + p.image_x_width]
         
         p0 = plot(range(1, 256, step=1), BGhist_array)
-        p0 = vline!(transpose(vlines), linecolor=[:red :red :black :green :green])
+        p0 = vline!(transpose(vlines), linecolor=[:red :red :black :green :green], labels=:none)
+        p0 = title!("Background Histogram of first " * string(round(p.first_seconds, digits=1)) * " seconds")
         display(p0)
-    end               
+
+                    
+        ###################   PLOTTING TOF SPECTRUM   ##################              
+        xtof    = range(0, p.tof_max * 1e6, TOFbins)
+        tofspec = tof_hist_sig .- tof_hist_bkg
+
+        p1      = plot(xtof, tofspec, label=:none)
+
+        for nr in 1:size(parameters.tof_gates)[1]
+            if mod(nr, 2) == 1
+                tofbox = [p.tof_gates[nr] p.tof_gates[nr] p.tof_gates[nr+1] p.tof_gates[nr+1] 
+                0 findmax(tofspec)[1] findmax(tofspec)[1] 0]
+                p1 = plot!(tofbox[1,:]*1e6, tofbox[2,:], labels=:none)
+            end
+        end
+        p1 = title!("background corrected TOF Spectrum")
+        p1 = xlabel!("TOF / μs") 
+        p1 = ylabel!("counts / bin")         
+        display(p1)     
+    end            
                 
-                  
-    # results of TOF analysis
-    # println("\nrange= ", range(0, TOFmax, length(tof_hist)))
-    # println("TOFmax = ", TOFmax, "  length = ", length(tof_hist))
-    TOF = range(0, p.tof_max * 1e6, TOFbins)
-
-    # create box to show TOF gate
-    imin = Int(floor(p.tof_gate_min/p.tof_bin))
-    imax = Int(floor(p.tof_gate_max/p.tof_bin))
-    TOFgate_max = maximum(tof_hist_sig[imin:imax])
-    TOFgate_box = [p.tof_gate_min p.tof_gate_min  p.tof_gate_max p.tof_gate_max
-                   0 TOFgate_max TOFgate_max 0]
-
-    # plot complete mass spectrum
-    println("Plotting mass spectrum")
-    p1 = plot( TOF, [-tof_hist_sig -tof_hist_bkg (tof_hist_sig - tof_hist_bkg)], 
-                xlabel="TOF (µs)",ylabel="counts / bin",
-                labels = ["-sig" "-bkg" "sig-bkg"], framestyle = :box,
-                title = "TOF mass spectrum")
-    p1 = plot!(p1, TOFgate_box[1,:]*1e6, TOFgate_box[2,:], labels= :none, ann=( (0.99,0.05), text(p.filename_stem,:right,8)))
-    display(p1)
-
-    # # plot gates part of mass spectrum (+/-200ns)
-    # plot( TOF, tof_hist, 
-    #             xlabel="TOF (µs)",ylabel="counts / bin",
-    #             xlim = (TOFgate[1]*1e6 - 0.2, TOFgate[2]*1e6 + 0.2),
-    #             ylim = (0, TOFgate_max *1.2),
-    #             legend = :none, framestyle = :box,
-    #             title = "TOF mass spectrum" )          
-    # display(plot!(TOFgate_box[1,:]*1e6, TOFgate_box[2,:]))
-
-    # plot image
-    println("\n Sum Image for TOF Gate")
-    p1 = Plots.heatmap(image, clims=p.image_scale, ann=( (0.95,0.95), text(p.filename_stem,:white,:right,8)))
     
-    plot!(p1,  [ROI_sig[1,1], ROI_sig[1,2], ROI_sig[1,2], ROI_sig[1,1], ROI_sig[1,1]],
-               [ROI_sig[2,1], ROI_sig[2,1], ROI_sig[2,2], ROI_sig[2,2], ROI_sig[2,1]],
-               color=:green)
-    plot!(p1,  [ROI_bkg[1,1], ROI_bkg[1,2], ROI_bkg[1,2], ROI_bkg[1,1], ROI_bkg[1,1]],
-               [ROI_bkg[2,1], ROI_bkg[2,1], ROI_bkg[2,2], ROI_bkg[2,2], ROI_bkg[2,1]],
-                color=:red)
-    display(p1)
+    ######################   PLOTTING SUM IMAGES   #####################
+    if p.create_image
+                    
+        legend_nr = 1 
+        for nr in 1:Int(size(parameters.tof_gates)[1]/2)
+            p2 = plot()
+            p2 = heatmap!(images[Int(nr)], labels=:none)
+            p2 = title!("Sum Image in TOF Gate: " * string(parameters.tof_gates[legend_nr]) * " - " 
+                * string(parameters.tof_gates[legend_nr+1]))
 
-    #--------------------------------------------------------------------------
-    # Plot the Kinetic trace
-    #--------------------------------------------------------------------------
-    if p.create_kt    
-        println("\nPlotting Kinetic Traces in Chunks of ", p.kt_length, " seconds")
-        # subtracting background from the kinetic trace
-        kt_hist_BGcorr = kt_hist .- kt_hist_bkg
-
-        # define the time range
-        t = range(0, p.kt_max * 1e3, p.kt_nbins)
-
-        kt_norm = push!([ p.kt_length for i in 1:length(kt_hist)-1], mod(out1[n_out] - p.kt_t0, p.kt_length))
-        #println("\t\tNormalization vector ", kt_norm)
-        
-        endvals   = cumsum(kt_norm) .+ parameters.kt_t0
-        startvals = endvals .- kt_norm
-        legend    = [string(round(startvals[i],digits=1))*" - "*string(round(endvals[i],digits=1))*" s" for i in 1:size(startvals)[1]]
-
-        display(plot(t , kt_hist_BGcorr ./ kt_norm,
-            xlabel="reaction time (ms)",ylabel="counts / bin / s",
-            labels = reshape(legend, 1, size(legend)[1]),
-            framestyle = :box,
-            title = "Kinetic traces",
-            ann=( (0.99,0.95), text(p.filename_stem,:right,8))
-            ))
-
+            plot!(p2,  [ROI_sig[1,1], ROI_sig[1,2], ROI_sig[1,2], ROI_sig[1,1], ROI_sig[1,1]],
+                   [ROI_sig[2,1], ROI_sig[2,1], ROI_sig[2,2], ROI_sig[2,2], ROI_sig[2,1]],
+                   color=:green, labels=:none)
+            plot!(p2,  [ROI_bkg[1,1], ROI_bkg[1,2], ROI_bkg[1,2], ROI_bkg[1,1], ROI_bkg[1,1]],
+                       [ROI_bkg[2,1], ROI_bkg[2,1], ROI_bkg[2,2], ROI_bkg[2,2], ROI_bkg[2,1]],
+                        color=:red, labels=:none)
+            display(p2)
+            legend_nr += 2
+        end
+    end
+            
+    
+    ###################   PLOTTING KINETIC TRACES   ###################            
+    if p.mode == 3
+        traces    = kt_hist_sig .- kt_hist_bkg
+        norm_vec  = push!([p.kt_length for i in 1:length(traces[1])-1], mod(out1[n_out] - p.kt_t0, p.kt_length))  
+        endvals   = cumsum(norm_vec) .+ parameters.kt_t0
+        startvals = endvals .- norm_vec
+        legend    = [string(round(startvals[i],digits=1))*" - "*string(round(endvals[i],digits=1))*" s" for i in 1:size(startvals)[1]]       
+        x_kt      = range(0, p.kt_max * 1e3, p.kt_nbins)
+                    
+        legend_nr = 1
+        for j in 1:size(traces)[1]
+            p3 = plot()
+            p3 = plot!(x_kt, traces[j] ./ norm_vec, labels = reshape(legend, 1, size(legend)[1]))
+            p3 = title!("TOF Gate: " * string(parameters.tof_gates[legend_nr]) * " -> " 
+                * string(parameters.tof_gates[legend_nr+1]) * " μs")
+            p3 = xlabel!("beam laser delay / ms")
+            p3 = ylabel!("counts / bin / s")
+            display(p3)
+            legend_nr += 2
+        end
+                    
     end
 end # function read_and_convert
