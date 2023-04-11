@@ -14,12 +14,11 @@ parameters = pars()
 
 # PATH 1
 parameters.data_path      = "F://B2Data//09.02.2023"
-filename                  = "004_RealTimeTitrations_Ptlower_480C_50HzNH3_saturationO2_10minDosingAt100Hz_000000"
 
 # PATH 2
-parameters.data_path      = "/home/akandra/Dropbox/Timepix camera data analysis/Data"
-filename                  = "20221010/004_100kHz_Ptlowerfacet_thickNOat20Hz_480C000000"
+#parameters.data_path      = "/home/akandra/Dropbox/Timepix camera data analysis/Data"
 
+filename                  = "004_RealTimeTitrations_Ptlower_300C_50HzNH3_10minDosingAt100Hz_000000"
 parameters.filename_stem  = parameters.data_path * "/" * filename
 
 #filename = nothing
@@ -41,28 +40,29 @@ parameters.first_seconds  = 3.0
 # TOF parameters
 parameters.tof_max        = 8e-6
 parameters.tof_bin        = 10e-9
-parameters.tof_gates      = [ 5.63, 5.90, 5.95, 6.0 ] .* 1e-6
+parameters.tof_gates      = [3.95e-6, 4.05e-6, 4.08e-6, 4.20e-6, 5.32e-6, 5.44e-6]
 
 
 # image parameters 
 parameters.create_image   = true
+parameters.image_scale    = (0,100)
 
-parameters.image_x_laser  = 140
-parameters.image_y_laser  = 172
-parameters.image_x_offset = 5
+parameters.image_x_laser  = 137
+parameters.image_y_laser  = 98
+parameters.image_x_offset = 4
 parameters.image_y_offset = 0
-parameters.image_x_width  = 25
-parameters.image_y_width  = 20
+parameters.image_x_width  = 18
+parameters.image_y_width  = 18
 
 # Kinetic Trace create parameters
 parameters.kt_max         = 2e-3
-parameters.kt_bin         = 20e-6
+parameters.kt_bin         = 10e-6
 parameters.kt_nbins       = Int(floor(parameters.kt_max/parameters.kt_bin))
 parameters.kt_t0          = 5.0
-parameters.kt_length      = 10.0
+parameters.kt_length      = 30.0
 
 # Laser and nozzle frequencies (Hz)
-parameters.freq_nozzle    = 20.
+parameters.freq_nozzle    = 50.
 parameters.freq_laser     = 100000.
 
 parameters.chunk_size     = (500*1024*1024)÷8
@@ -72,9 +72,14 @@ println("selected file: ", filename)
 convert_and_process(parameters)
 
 #NEXTTIME
-# 1. use a profiler to improve the performance
-# 2. deal with border case fo get_chunk when there is no leftover
-# 3. Introduce more modes
-#       a) imitate on-the-fly processing of the data
+# 0.5 time-dependent kinetics - finish the file name annotation and position of the legend
+# 1. deal with border case fo get_chunk when there is no leftover
+# 2. use a profiler to improve the performance
+# 3. Multimass KT
+# 4. Introduce the workflow keys: 
+#        1: calibration of tof from background;
+#        2: getting incident beam profile and select mass
+#        3: getting kinetic traces
+
 # Long-term perspective:
 # 1. julia package

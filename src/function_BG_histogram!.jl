@@ -1,4 +1,6 @@
-function BG_histogram!(BGhist_array::Vector{Int32},
+include("find_TOF_interval!.jl")
+
+function BG_histogram!(BGhists::Vector{Vector{Int32}},
                      p::pars, 
                      out1::Vector{Float32}, 
                      out2::Vector{Float32}, 
@@ -17,13 +19,17 @@ function BG_histogram!(BGhist_array::Vector{Int32},
     else
 
         ROI_for_hist = [[Int16(0) Int16(257)] ; [ROI_bkg[2,1] ROI_sig[2,2]]] # syntax: [[xmin, xmax]; [ymin, ymax]]
-
-        idx_roi = get_ROIdata(out1, out2, out3, out4, out5, out6, n_out, ROI_for_hist)
+        
+        idx_roi      = get_ROIdata(out1, out2, out3, out4, out5, out6, n_out, ROI_for_hist)
         
         for i in idx_roi
-            if out1[i] < p.first_seconds
+            if out1[i] > 0 && out1[i] < p.first_seconds
                 
-                BGhist_array[Int(out5[i])] += 1
+                which_hist = find_TOF_interval!(out3[i], p)
+                
+                if typeof(which_hist) != Nothing
+                    BGhists[which_hist][Int(out5[i])] += 1
+                end
                 
             end
         end
