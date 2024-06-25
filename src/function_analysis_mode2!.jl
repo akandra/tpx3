@@ -20,7 +20,7 @@ function analysis_mode2!(tof_hist, kt_histogr, kt_histogr_first_sec, p, ROI, bea
             
             which_kt = find_TOF_interval!(tof[i], p)
             
-            if typeof(which_kt) != Nothing
+            if which_kt > -1
                 kt_chunk = Int(floor( (beam_time[i] - p.mode3_t0) / p.kt_length + 1 ))
                 
                 if kt_chunk > length(kt_histogr[which_kt])

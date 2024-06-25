@@ -3,7 +3,7 @@ function find_TOF_interval!(tof_value::Float32, p::pars)
     # lower border of TOF gate < tof_value <= upper border of TOF gate
     # else: returns nothing
 
-    idx = nothing
+    idx = -1
 
     if p.tof_gates[1] <= tof_value <= p.tof_gates[end]
         i = 1

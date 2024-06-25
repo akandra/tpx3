@@ -13,14 +13,17 @@ function get_ROIdata(   beam_time::Vector{Float32},
         stop # should never happen
     else
 
-        idx_list = []
+        idx_list = zeros(Int,n_out)
+        idx = [0]
         for i in 1:n_out
             if x[i] > ROI[1,1] && x[i] < ROI[1,2] && y[i] > ROI[2,1] && y[i] < ROI[2,2]
-                push!(idx_list, i) 
+                #push!(idx_list, i) 
+                idx[1] += 1
+                idx_list[idx[1]] = i
             end
         end
     
     end
 
-    return idx_list
+    return resize!(idx_list,idx[1])
 end

@@ -72,14 +72,8 @@ println("selected file: ", filename)
 convert_and_process(parameters)
 
 #NEXTTIME
-# 0.5 time-dependent kinetics - finish the file name annotation and position of the legend
-# 1. deal with border case fo get_chunk when there is no leftover
-# 2. use a profiler to improve the performance
-# 3. Multimass KT
-# 4. Introduce the workflow keys: 
-#        1: calibration of tof from background;
-#        2: getting incident beam profile and select mass
-#        3: getting kinetic traces
+# 1. deal with border case for get_chunk when there is no leftover
+# 2. deal with the message on the error in TPX file
 
 # Long-term perspective:
 # 1. julia package

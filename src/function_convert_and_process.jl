@@ -15,7 +15,8 @@ include("function_BG_histogram!.jl")
 include("function_analyze_image!.jl")
 include("function_realtime_analysis!.jl")
 
-function process_chunk!(BGhists, tof_hist_sig, tof_hist_bkg, images, kt_hist_sig, kt_hist_bkg, 
+function process_chunk!(BGhists, tof_hist_sig, tof_hist_bkg, images, 
+                        kt_hist_sig,kt_hist_bkg,
                         realtime_trace_sig, realtime_trace_bkg,
                         kt_firstsec_sig, kt_firstsec_bkg, p, ROI_sig, ROI_bkg, ROI_beam, 
                         out1, out2, out3, out4, out5, out6, n_out,
@@ -39,7 +40,6 @@ function process_chunk!(BGhists, tof_hist_sig, tof_hist_bkg, images, kt_hist_sig
         end
     end
     
-    
     # REAL TIME ANALYSIS
     
     if p.realtime
@@ -60,7 +60,6 @@ function process_chunk!(BGhists, tof_hist_sig, tof_hist_bkg, images, kt_hist_sig
         end
         
     end
-    
     
     # WRITING OUTPUT FILES
     
@@ -150,41 +149,22 @@ function convert_and_process(p :: pars)
     tof_hist_sig       = zeros(Int32, TOFbins)
     tof_hist_bkg       = zeros(Int32, TOFbins)
 
-    kt_hist_sig        = [Vector{Int32}[]]
-    kt_hist_bkg        = [Vector{Int32}[]]
-
-    kt_firstsec_sig    = Vector{Int32}[]
-    kt_firstsec_bkg    = Vector{Int32}[]
-    
-    realtime_trace_sig = Vector{Int32}[]
-    realtime_trace_bkg = Vector{Int32}[]
     nr_realtimebins    = Int(floor((p.realtime_tmax - p.realtime_t0)/p.realtime_bin))        
     
-    BGhists            = Vector{Int32}[]
+    n_tof_gates = Int(size(p.tof_gates)[1]/2)
+    # if number of kinetic traces  > 20, then push! is used to increase the size of array
+    kt_hist_sig        = [[ zeros(Int, p.kt_nbins) for _ in 1:20] for _ in 1:n_tof_gates]
+    kt_hist_bkg        = [[ zeros(Int, p.kt_nbins) for _ in 1:20] for _ in 1:n_tof_gates]
 
-    images             = []
+    kt_firstsec_sig    = [ zeros(Int,  p.kt_nbins) for _ in 1:n_tof_gates]
+    kt_firstsec_bkg    = [ zeros(Int,  p.kt_nbins) for _ in 1:n_tof_gates]
+    
+    realtime_trace_sig = [ zeros(Int,  nr_realtimebins) for _ in 1:n_tof_gates]
+    realtime_trace_bkg = [ zeros(Int,  nr_realtimebins) for _ in 1:n_tof_gates]
+
+    BGhists            = [ zeros(Int, 256)      for _ in 1:n_tof_gates]
+    images             = [ zeros(Int, 256, 256) for _ in 1:n_tof_gates]
  
-    for i1 in 1:Int(size(p.tof_gates)[1]/2)
-        push!(kt_hist_sig,        Vector{Int32}[])
-        push!(kt_hist_sig[i1],    zeros(Int32, p.kt_nbins))
-
-        push!(kt_hist_bkg,        Vector{Int32}[])
-        push!(kt_hist_bkg[i1],    zeros(Int32, p.kt_nbins))
-
-        push!(kt_firstsec_sig,    zeros(Int32, p.kt_nbins))
-        push!(kt_firstsec_bkg,    zeros(Int32, p.kt_nbins)) 
-        
-        push!(realtime_trace_sig, zeros(Int32, nr_realtimebins))
-        push!(realtime_trace_bkg, zeros(Int32, nr_realtimebins))
-        
-        push!(BGhists,            zeros(Int32, 256))
-        
-        push!(images,             zeros(Int32, 256, 256))
-    end
-    # Now delete the last item out of the kinetic traces (which will be in intervals of xxx seconds),
-    # since this elements will not be needed
-    pop!(kt_hist_sig)
-    pop!(kt_hist_bkg)
     ############################################################
     
     #--------------------------------------------------------------------------
@@ -198,13 +178,9 @@ function convert_and_process(p :: pars)
     println("Start processing file")
     println("------------------------------------------------------------------------------------------")
 
-    # print data length in bytes
-    #println("filename\t\t\t: ", input_filename)
-
     i = 0
     max_packet = data_length -1 # discard last packet -- it is unknown type 7 probably EOF
     
-    #println("testing with max_packet\t\t: ", max_packet)
     
     # Introduce a variable to stop the loading/converting procedure if one is not interested in the whole file
     early_stop = 0
@@ -214,14 +190,19 @@ function convert_and_process(p :: pars)
     while i < max_packet && early_stop < 1
         i = i + 1
         
-        if out1[1] > p.mode3_tmax
-            early_stop += 1
-        end
+        
+        # -------------------------------------------------- #
+        # COMMENTED OUT FOR COMBINED RRR+TITRATION EXPERIMENTS
+        
+        #if out1[1] > p.mode3_tmax
+        #    early_stop += 1
+        #end
+        # -------------------------------------------------- #
         
         # save and process data if we have finished processing a chunk
         if input_data.next > input_data.chunk
             
-            process_chunk!(BGhists, tof_hist_sig, tof_hist_bkg, images, 
+           process_chunk!(BGhists, tof_hist_sig, tof_hist_bkg, images, 
                         kt_hist_sig, kt_hist_bkg, realtime_trace_sig, realtime_trace_bkg,
                         kt_firstsec_sig, kt_firstsec_bkg, p, ROI_sig, ROI_bkg, ROI_beam, 
                         out1, out2, out3, out4, out5, out6, n_out,
@@ -240,7 +221,7 @@ function convert_and_process(p :: pars)
 
         packet = input_data.buffer[input_data.next]
         input_data.next  += 1
-
+        
         # ------------------------------------------------------------------------
         #   get the packet type
         #   packet type is in bits 60 to 63 of data packet (bits numbered 0 .. 63)
@@ -304,28 +285,27 @@ function convert_and_process(p :: pars)
         # ASI c++ code ignores this error
         #------------------------------------------------------------------
         else
-            println()
-            println("---------------------------------------------")
-            println("ERROR IN TPX# FILE")
-            println("i = ", commas(i))
-            print("packet ="); display(packet)
-            println("unknown packet_type ", packet_type)
-            println("---------------------------------------------")
+            #println()
+            #println("---------------------------------------------")
+            #println("ERROR IN TPX# FILE")
+            #println("i = ", commas(i))
+            #print("packet ="); display(packet)
+            #println("unknown packet_type ", packet_type)
+            #println("---------------------------------------------")
             
             # to ignore this error, comment following line
             # stop_unknown_packet_type
         end # packet_type cascaded if-elseif selction
 
     end #loop over packets
-
     # save and process data left in chunk after reaching end of data
 
     if n_out > 0
-        process_chunk!(BGhists, tof_hist_sig, tof_hist_bkg, images, 
-                        kt_hist_sig, kt_hist_bkg, realtime_trace_sig, realtime_trace_bkg,
-                        kt_firstsec_sig, kt_firstsec_bkg, p, ROI_sig, ROI_bkg, ROI_beam,
-                        out1, out2, out3, out4, out5, out6, n_out,
-                        outfile_txt, ofb1, ofb2, ofb3, ofb4, ofb5, ofb6)
+       process_chunk!(BGhists, tof_hist_sig, tof_hist_bkg, images, 
+                      kt_hist_sig, kt_hist_bkg, realtime_trace_sig, realtime_trace_bkg,
+                      kt_firstsec_sig, kt_firstsec_bkg, p, ROI_sig, ROI_bkg, ROI_beam,
+                      out1, out2, out3, out4, out5, out6, n_out,
+                      outfile_txt, ofb1, ofb2, ofb3, ofb4, ofb5, ofb6)
     end
                 
     println()
@@ -364,15 +344,15 @@ function convert_and_process(p :: pars)
                 
     if p.mode == 3
         legend_nr = 1
-        for nr in 1:Int(size(parameters.tof_gates)[1]/2)
+        for nr in 1:Int(size(p.tof_gates)[1]/2)
             vlines = [p.image_x_laser - p.image_x_offset - p.image_x_width,
                         p.image_x_laser - p.image_x_offset,
                         p.image_x_laser,
                         p.image_x_laser + p.image_x_offset,
                         p.image_x_laser + p.image_x_offset + p.image_x_width]
 
-            p0 = plot(range(1, 256, step=1), BGhists[nr], label="TOF Gate " * string(round(parameters.tof_gates[legend_nr]*1e6, digits=2)) 
-                                * " - " * string(round(parameters.tof_gates[legend_nr+1]*1e6, digits=2)) * " μs")
+            p0 = plot(range(1, 256, step=1), BGhists[nr], label="TOF Gate " * string(round(p.tof_gates[legend_nr]*1e6, digits=2)) 
+                                * " - " * string(round(p.tof_gates[legend_nr+1]*1e6, digits=2)) * " μs")
             p0 = vline!(transpose(vlines), linecolor=[:red :red :black :green :green], labels=:none)
             p0 = title!("Background Histogram of first " * string(round(p.first_seconds, digits=1)) * " seconds")
             p0 = plot!(legend=:right)
@@ -390,7 +370,7 @@ function convert_and_process(p :: pars)
 
         p1      = plot(xtof, tofspec, label=:none)
 
-        for nr in 1:size(parameters.tof_gates)[1]
+        for nr in 1:size(p.tof_gates)[1]
             if mod(nr, 2) == 1
                 tofbox = [p.tof_gates[nr] p.tof_gates[nr] p.tof_gates[nr+1] p.tof_gates[nr+1] 
                 0 findmax(tofspec)[1] findmax(tofspec)[1] 0]
@@ -413,10 +393,10 @@ function convert_and_process(p :: pars)
                 
     if p.create_image  
         legend_nr = 1 
-        for nr in 1:Int(size(parameters.tof_gates)[1]/2)
+        for nr in 1:Int(size(p.tof_gates)[1]/2)
             p2 = plot()
-            p2 = title!("Sum Image in TOF Gate: " * string(round(parameters.tof_gates[legend_nr]*1e6, digits=2)) * " - " 
-                    * string(round(parameters.tof_gates[legend_nr+1]*1e6, digits=2)) * " μs")
+            p2 = title!("Sum Image in TOF Gate: " * string(round(p.tof_gates[legend_nr]*1e6, digits=2)) * " - " 
+                    * string(round(p.tof_gates[legend_nr+1]*1e6, digits=2)) * " μs")
             
             if p.mode == 3
             p2 = heatmap!(images[Int(nr)], labels=:none)
@@ -441,8 +421,8 @@ function convert_and_process(p :: pars)
             legend_nr += 2
                         
             DeltaX    = abs(ROI_beam[1,1] - ROI_beam[1,2])
-            DeltaTOF  = abs(parameters.tof_gates[nr+1] - parameters.tof_gates[nr])
-            TOFmean   = parameters.tof_gates[nr] + DeltaTOF/2
+            DeltaTOF  = abs(p.tof_gates[nr+1] - p.tof_gates[nr])
+            TOFmean   = p.tof_gates[nr] + DeltaTOF/2
             Xmean     = p.image_x_laser - ROI_beam[1,2] + DeltaX/2
             vbeam     = Xmean/cos(3.141592 * p.sidenoz_angle / 180)/TOFmean/p.pixel_per_mm*1e-3
             rel_error = DeltaX/2/Xmean + DeltaTOF/2/TOFmean
@@ -457,17 +437,31 @@ function convert_and_process(p :: pars)
         end
     end
             
-    
+   # CORRECTION: Normalization Introduced on 12.04.2024
+   kt_hist_sig        = kt_hist_sig ./ p.kt_bin
+   kt_hist_bkg        = kt_hist_bkg ./ p.kt_bin        
+   realtime_trace_sig = realtime_trace_sig ./ p.realtime_bin
+   realtime_trace_bkg = realtime_trace_bkg ./ p.realtime_bin
+                            
     ###################   PLOTTING KINETIC TRACES   ################### 
                 
     if p.mode == 2 || p.mode == 3 
-        traces     = kt_hist_sig .- kt_hist_bkg
-        kt_maxtime = findmin([out1[n_out], p.mode3_tmax])[1]
-        norm_vec   = push!([p.kt_length for i in 1:length(traces[1])-1], mod(kt_maxtime - p.mode3_t0, p.kt_length))  
-        endvals    = cumsum(norm_vec) .+ parameters.mode3_t0
-        startvals  = endvals .- norm_vec
-        legend     = [string(round(startvals[i],digits=1))*" - "*string(round(endvals[i],digits=1))*" s" for i in 1:size(startvals)[1]]     
-        
+        endtime     = findmin([p.mode3_tmax, out1[n_out]])[1]
+        nr_traces   = ceil((endtime-p.mode3_t0) / p.kt_length)                   
+        kt_hist_sig = [kt_hist_sig[i][1:Int(nr_traces)] for i in 1:size(kt_hist_sig)[1]]
+        kt_hist_bkg = [kt_hist_bkg[i][1:Int(nr_traces)] for i in 1:size(kt_hist_bkg)[1]]
+        traces      = kt_hist_sig .- kt_hist_bkg    
+                       
+        # Calculate a normalization vector for the kinetic traces (24.05.2024)
+        #  traces should be normalized to the number of beam shots for which the flux per kinetic trace was summed up                      
+        kt_maxtime  = findmin([out1[n_out], p.mode3_tmax])[1]
+        kt_times    = push!([p.kt_length for i in 1:length(traces[1])-1], mod(kt_maxtime - p.mode3_t0, p.kt_length))
+        norm_vec    = kt_times .* p.freq_nozzle
+                    
+        endvals     = cumsum(kt_times) .+ p.mode3_t0
+        startvals   = endvals .- kt_times
+        legend      = [string(round(startvals[i],digits=1))*" - "*string(round(endvals[i],digits=1))*" s" for i in 1:size(startvals)[1]]
+             
         if p.mode == 2
             x_kt   = range(0, p.kt_max * 1e3, p.kt_nbins)
         end
@@ -480,8 +474,8 @@ function convert_and_process(p :: pars)
         for j in 1:size(traces)[1]
             p3 = plot()
             p3 = plot!(x_kt, traces[j] ./ norm_vec, labels = reshape(legend, 1, size(legend)[1]))
-            p3 = title!("TOF Gate: " * string(round(parameters.tof_gates[legend_nr]*1e6, digits=2)) * " -> " 
-                * string(round(parameters.tof_gates[legend_nr+1]*1e6, digits=2)) * " μs")
+            p3 = title!("TOF Gate: " * string(round(p.tof_gates[legend_nr]*1e6, digits=2)) * " -> " 
+                * string(round(p.tof_gates[legend_nr+1]*1e6, digits=2)) * " μs")
                         
             if p.mode == 2
                 p3 = xlabel!("beam laser delay / ms")
@@ -496,7 +490,8 @@ function convert_and_process(p :: pars)
         end          
     end 
    
+# units of traces:         flux / s (/ beam shot)
+# units of realtime_trace: flux / s
    
-   return BGhists, xtof, tofspec, x_kt, [traces[i] ./ norm_vec for i in 1:size(traces)[1]], 
-            (kt_firstsec_sig .- kt_firstsec_bkg) ./ p.first_seconds, realtime_trace_sig, realtime_trace_bkg                
-end # function convert_and_process
+   return BGhists, xtof, tofspec, x_kt, [traces[i] ./ norm_vec for i in 1:size(traces)[1]], [kt_hist_bkg[i] ./ norm_vec for i in 1:size(kt_hist_bkg)[1]], realtime_trace_sig, realtime_trace_bkg, out1[n_out] # , (kt_firstsec_sig .- kt_firstsec_bkg) ./ p.first_seconds,                 
+end
